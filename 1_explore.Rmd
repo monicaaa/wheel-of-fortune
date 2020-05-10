@@ -1,0 +1,84 @@
+---
+title: "Exploratory Data Analysis for Wheel of Fortune Project"
+output: html_notebook
+---
+
+# Step 1: Read and clean the data
+
+```{r reading, echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(skimr)
+library(here)
+wof_raw <- read_csv("bonus-puzzle-data.csv")
+glimpse(wof_raw)
+skim(wof_raw)
+```
+Let's make some changes to the raw data:
+-------
+- add ID column
+- change date formatting
+- check and remove any special characters in letters_guessed
+- separate letters_guessed into consonants and vowels
+- recode puzzle category if similar categories exist (i.e. "thing" and "things")
+
+```{r}
+wof_raw %>% count(category)
+wof_raw %>% count(category) %>% arrange(-n)
+
+wof <- wof_raw %>%
+  mutate(id = row_number(),
+         air_date = parse_date_time(air_date, orders = "dmy"),
+         letters_guessed = str_replace_all(letters_guessed, "[^A-Z]", ""),
+         consonants_guessed = str_sub(letters_guessed, 1, 3),
+         vowel_guessed = str_extract(letters_guessed, "[AEIOU]"),
+         wildcard_guessed = ifelse(nchar(letters_guessed) == 5,
+                                   str_sub(letters_guessed, -1, -1),
+                                   ""),
+         consonants_guessed = paste0(consonants_guessed, wildcard_guessed),
+         category = str_to_title(category),
+         category = case_when(
+           category %in% c("People", "Person") ~ "People/Person",
+           category %in% c("Place", "Places") ~ "Place(s)",
+           category %in% c("Thing", "Things") ~ "Thing(s)",
+           category == "Phrase" ~ "Phrase",
+           TRUE ~ "Other"
+         )) %>%
+  select(id, air_date, category, puzzle, consonants_guessed, vowel_guessed, win)
+```
+
+Let's add more information about the puzzle:
+-----
+- number of words
+- number of letters
+- number of letters per word
+- number of consonants
+- number of vowels
+- unique consonants
+- unique vowels
+- number of consonants solved (including the given RSTLN)
+- number of vowels solved (including the given E)
+
+```{r}
+wof <- wof %>%
+  mutate(num_words = str_count(puzzle, boundary("word")),
+         puzzle_no_space = str_replace_all(puzzle, "[^A-Z]", ""),
+         num_letters = str_count(puzzle_no_space, "[A-Z]"),
+         num_consonants = str_count(puzzle_no_space, "[^AEIOU]"),
+         num_vowels = num_letters-num_consonants,
+         puzzle_consonants = str_replace_all(puzzle_no_space, "[AEIOU]", ""),
+         puzzle_vowels = str_replace_all(puzzle_no_space, "[^AEIOU]", ""),
+         num_consonants_solved_given = str_count(puzzle_consonants, "[RSTLN]"),
+         num_consonants_solved_guessed = str_count(puzzle_consonants, paste0("[", consonants_guessed, "]")),
+         num_consonants_solved_total = num_consonants_solved_given+num_consonants_solved_guessed,
+         num_vowels_solved_given = str_count(puzzle_vowels, "[E]"),
+         num_vowels_solved_guessed = str_count(puzzle_consonants, paste0("[", vowel_guessed, "]")),
+         num_vowels_solved_total = num_vowels_solved_given+num_vowels_solved_guessed,
+         num_letters_solved = num_consonants_solved_total+num_vowels_solved_total
+  ) %>%
+  select(-puzzle_no_space)
+
+glimpse(wof)
+```
+
+
